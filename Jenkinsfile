@@ -1,5 +1,6 @@
 pipeline {
-    agent any
+
+    agent none
 
     environment {
         APP_NAME = "lab10monitoreo"
@@ -11,58 +12,82 @@ pipeline {
     stages {
 
         stage('Checkout') {
+            agent any
             steps {
                 echo "Clonando repositorio..."
                 git branch: "${BRANCH}", url: "${REPO_URL}"
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Install & Test (Node)') {
+            agent {
+                docker {
+                    image 'node:18'
+                    args '-u root:root'
+                }
+            }
             steps {
                 echo "Instalando dependencias..."
                 sh 'npm install'
-            }
-        }
 
-        stage('Run Tests (Jest)') {
-            steps {
-                echo "Ejecutando pruebas..."
+                echo "Ejecutando pruebas Jest..."
                 sh 'npm test'
             }
         }
 
         stage('Build Docker Image') {
+            agent any
             steps {
                 echo "Construyendo imagen Docker..."
                 sh "docker build -t ${APP_NAME}:${VERSION} ."
+                sh "docker tag ${APP_NAME}:${VERSION} ${APP_NAME}:latest"
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy (Docker Compose)') {
+            agent any
             steps {
-                echo "Desplegando con Docker Compose..."
+                echo "Desplegando aplicación..."
                 sh 'docker compose down || true'
-                sh 'docker compose up -d --build'
+                sh "APP_VERSION=${VERSION} docker compose up -d --build"
             }
         }
 
-        stage('DORA Metrics (Simulado)') {
+        stage('Health Check') {
+            agent any
             steps {
-                echo "📊 Métricas DORA"
-                echo "Deployment Frequency: ${BUILD_NUMBER}"
-                echo "Lead Time: Simulado"
-                echo "MTTR: Simulado"
-                echo "Change Failure Rate: Simulado"
+                echo "Validando aplicación..."
+                sh """
+                sleep 5
+                curl -f http://localhost:3000 || exit 1
+                """
+            }
+        }
+
+        stage('DORA Metrics') {
+            agent any
+            steps {
+                script {
+                    echo "📊 Métricas DORA"
+                    echo "Deployment Frequency: ${BUILD_NUMBER}"
+                    echo "Lead Time: Simulado"
+                    echo "MTTR: Simulado"
+                    echo "Change Failure Rate: Simulado"
+                }
             }
         }
     }
 
     post {
         success {
-            echo "✅ Pipeline ejecutado correctamente - Version ${VERSION}"
+            echo "✅ Deploy exitoso - Version ${VERSION}"
         }
         failure {
-            echo "❌ Error en pipeline"
+            echo "❌ Fallo en pipeline"
+        }
+        always {
+            echo "🧹 Limpieza opcional"
+            sh 'docker image prune -f || true'
         }
     }
 }

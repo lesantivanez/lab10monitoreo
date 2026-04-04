@@ -23,23 +23,6 @@ pipeline {
             }
         }
 
-        stage('Prepare Compose File') {
-            steps {
-                echo "📂 Asegurando docker-compose.yml en /app..."
-                sh """
-                    mkdir -p ${WORKSPACE}/app
-                    if [ -f ${WORKSPACE}/docker-compose.yml ]; then
-                        cp ${WORKSPACE}/docker-compose.yml ${WORKSPACE}/app/
-                        echo "✅ docker-compose.yml copiado a app/"
-                    elif [ -f ${WORKSPACE}/app/docker-compose.yml ]; then
-                        echo "✅ docker-compose.yml ya existe en app/"
-                    else
-                        echo "❌ docker-compose.yml no encontrado, abortando pipeline" && exit 1
-                    fi
-                """
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 echo "🐳 Construyendo imagen Docker de la app..."
@@ -70,17 +53,26 @@ pipeline {
             steps {
                 echo "🚀 Desplegando Node app, Prometheus y Grafana con Docker Compose..."
                 sh """
+                # Aseguramos que docker-compose.yml esté disponible
+                mkdir -p ${WORKSPACE}/app
+                if [ ! -f ${WORKSPACE}/app/docker-compose.yml ]; then
+                    cp ${WORKSPACE}/docker-compose.yml ${WORKSPACE}/app/docker-compose.yml
+                fi
+
+                # Deploy usando docker/compose dentro de contenedor
                 docker run --rm \
                     -v /var/run/docker.sock:/var/run/docker.sock \
-                    -v ${WORKSPACE}/app:/app \
-                    -w /app \
-                    docker/compose:latest -f docker-compose.yml down || true
+                    -v ${WORKSPACE}:/workspace \
+                    -w /workspace/app \
+                    docker/compose:latest \
+                    -f /workspace/app/docker-compose.yml down || true
 
                 docker run --rm \
                     -v /var/run/docker.sock:/var/run/docker.sock \
-                    -v ${WORKSPACE}/app:/app \
-                    -w /app \
-                    docker/compose:latest -f docker-compose.yml up -d
+                    -v ${WORKSPACE}:/workspace \
+                    -w /workspace/app \
+                    docker/compose:latest \
+                    -f /workspace/app/docker-compose.yml up -d
                 """
             }
         }
@@ -97,7 +89,9 @@ pipeline {
         stage('Check App Health') {
             steps {
                 echo "💚 Verificando healthcheck de la app..."
-                sh "docker inspect --format='{{.State.Health.Status}}' node_app || echo 'No healthcheck definido'"
+                sh """
+                docker inspect --format='{{.State.Health.Status}}' node_app || echo 'No healthcheck definido'
+                """
             }
         }
     }

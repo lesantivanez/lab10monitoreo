@@ -54,19 +54,19 @@ pipeline {
                 echo "📂 Preparando docker-compose.yml y desplegando stack..."
                 dir('app') {
                     sh """
-                    # Asegurar que docker-compose.yml existe
+                    # Verificar docker-compose.yml
                     if [ ! -f docker-compose.yml ]; then
-                        echo "❌ docker-compose.yml no encontrado en app/, abortando..." && exit 1
+                        echo "❌ docker-compose.yml no encontrado, abortando..." && exit 1
                     fi
 
                     echo "📂 Contenido de app/:"
                     ls -la
 
-                    # Detener cualquier stack previo
-                    docker compose down || true
+                    # Detener stack previo
+                    docker-compose down || true
 
                     # Levantar stack Node + Prometheus + Grafana
-                    docker compose up -d
+                    docker-compose up -d
                     """
                 }
             }

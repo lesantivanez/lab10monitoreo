@@ -4,7 +4,7 @@ pipeline {
     environment {
         APP_NAME = "node_app"
         APP_VERSION = "1.0.${BUILD_NUMBER}"
-        APP_DIR = "app" // Carpeta donde está docker-compose.yml
+        APP_DIR = "app"
     }
 
     options {
@@ -52,13 +52,19 @@ pipeline {
 
         stage('Deploy Monitoring Stack') {
             steps {
-                echo "🚀 Desplegando Node app, Prometheus y Grafana con Docker Compose desde host Jenkins..."
+                echo "🚀 Desplegando Node app, Prometheus y Grafana con Docker Compose en contenedor..."
                 dir("${APP_DIR}") {
-                    // Baja contenedores anteriores si existen
-                    sh 'docker-compose down || true'
+                    sh """
+                    docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        -v ${WORKSPACE}/app:/app -w /app \
+                        docker/compose:2.21.1 down || true
 
-                    // Levanta todos los servicios en background
-                    sh 'docker-compose up -d'
+                    docker run --rm \
+                        -v /var/run/docker.sock:/var/run/docker.sock \
+                        -v ${WORKSPACE}/app:/app -w /app \
+                        docker/compose:2.21.1 up -d
+                    """
                 }
             }
         }
@@ -85,7 +91,7 @@ pipeline {
                     echo "Node App:" && curl -s -I http://localhost:3000 | head -n 1
                     echo "Prometheus:" && curl -s -I http://localhost:9090 | head -n 1
                     echo "Grafana:" && curl -s -I http://localhost:3001 | head -n 1
-                    docker-compose ps
+                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v ${WORKSPACE}/app:/app -w /app docker/compose:2.21.1 ps
                     '''
                 }
             }

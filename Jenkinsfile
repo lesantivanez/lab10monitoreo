@@ -104,6 +104,7 @@ pipeline {
 
         stage('Deploy Monitoring Stack') {
             steps {
+
                 echo "🚀 Desplegando Node + Prometheus + Grafana..."
 
                 dir('app') {
@@ -112,16 +113,24 @@ pipeline {
                     echo "📍 Ubicación actual:"
                     pwd
 
-                    echo "📂 Contenido actual:"
+                    echo "📂 Contenido app/:"
                     ls -la
 
-                    echo "📂 Prometheus config:"
+                    echo "📂 Contenido prometheus_config/:"
                     ls -la prometheus_config
 
                     echo "🧹 Limpiando contenedores previos..."
+
                     docker-compose down -v || true
 
+                    docker rm -f prometheus || true
+                    docker rm -f grafana || true
+                    docker rm -f node_app || true
+
+                    docker volume prune -f || true
+
                     echo "🚀 Levantando stack..."
+
                     docker-compose up -d --build
                     """
                 }
@@ -130,6 +139,7 @@ pipeline {
 
         stage('Verify Containers') {
             steps {
+
                 echo "🔍 Verificando contenedores..."
 
                 sh """
@@ -149,6 +159,7 @@ pipeline {
 
         stage('Verify Prometheus Inside Container') {
             steps {
+
                 echo "🔎 Verificando archivos dentro de Prometheus..."
 
                 sh """
@@ -159,6 +170,7 @@ pipeline {
 
         stage('Check App Health') {
             steps {
+
                 echo "💚 Verificando healthcheck..."
 
                 sh """
@@ -179,11 +191,12 @@ pipeline {
         }
 
         success {
-            echo "🎉 Stack desplegado correctamente"
+            echo "🎉 Pipeline completado correctamente!"
+            echo "Node.js + Prometheus + Grafana corriendo."
         }
 
         failure {
-            echo "❌ Pipeline falló — revisar logs"
+            echo "❌ Pipeline falló — revisar logs."
         }
 
     }

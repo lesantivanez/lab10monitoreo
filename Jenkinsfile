@@ -28,7 +28,8 @@ pipeline {
 
         stage('Verify Project Structure') {
             steps {
-                echo "📂 Verificando estructura del proyecto..."
+
+                echo "📂 Verificando estructura..."
 
                 sh """
                 echo "📍 Ubicación actual:"
@@ -46,9 +47,34 @@ pipeline {
             }
         }
 
+        stage('Clean Docker Environment') {
+            steps {
+
+                echo "🧹 Limpieza profunda Docker..."
+
+                sh """
+                docker-compose -f app/docker-compose.yml down -v || true
+
+                docker rm -f prometheus || true
+                docker rm -f grafana || true
+                docker rm -f node_app || true
+
+                docker volume prune -f || true
+                docker system prune -f || true
+
+                echo "📦 Contenedores actuales:"
+                docker ps -a
+
+                echo "📦 Volúmenes actuales:"
+                docker volume ls
+                """
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
-                echo "🐳 Construyendo imagen Docker..."
+
+                echo "🐳 Construyendo imagen..."
 
                 dir('app') {
                     sh """
@@ -60,16 +86,18 @@ pipeline {
 
         stage('Run Tests') {
             steps {
+
                 echo "🧪 Ejecutando tests..."
 
                 dir('app') {
+
                     sh """
                     docker run --rm \
                         -w /app \
                         -e APP_VERSION=${APP_VERSION} \
                         ${APP_NAME}:${APP_VERSION} \
                         sh -c '
-                            echo "📂 Contenido de /app:"
+                            echo "📂 Archivos dentro del contenedor:"
                             ls -la
 
                             if [ ! -f package.json ]; then
@@ -86,11 +114,12 @@ pipeline {
 
         stage('Validate Prometheus Config') {
             steps {
-                echo "🔎 Validando archivo prometheus.yml..."
+
+                echo "🔎 Validando prometheus.yml..."
 
                 sh """
                 if [ ! -f app/prometheus_config/prometheus.yml ]; then
-                    echo "❌ ERROR: prometheus.yml NO encontrado"
+                    echo "❌ ERROR: prometheus.yml no existe"
                     exit 1
                 fi
 
@@ -105,7 +134,7 @@ pipeline {
         stage('Deploy Monitoring Stack') {
             steps {
 
-                echo "🚀 Desplegando Node + Prometheus + Grafana..."
+                echo "🚀 Desplegando stack..."
 
                 dir('app') {
 
@@ -113,23 +142,13 @@ pipeline {
                     echo "📍 Ubicación actual:"
                     pwd
 
-                    echo "📂 Contenido app/:"
+                    echo "📂 Archivos en app/:"
                     ls -la
 
-                    echo "📂 Contenido prometheus_config/:"
+                    echo "📂 Archivos prometheus_config/:"
                     ls -la prometheus_config
 
-                    echo "🧹 Limpiando contenedores previos..."
-
-                    docker-compose down -v || true
-
-                    docker rm -f prometheus || true
-                    docker rm -f grafana || true
-                    docker rm -f node_app || true
-
-                    docker volume prune -f || true
-
-                    echo "🚀 Levantando stack..."
+                    echo "🚀 Levantando contenedores..."
 
                     docker-compose up -d --build
                     """
@@ -145,22 +164,22 @@ pipeline {
                 sh """
                 docker ps -a
 
-                echo "📦 Node:"
+                echo "📦 node_app:"
                 docker ps --filter "name=node_app"
 
-                echo "📦 Prometheus:"
+                echo "📦 prometheus:"
                 docker ps --filter "name=prometheus"
 
-                echo "📦 Grafana:"
+                echo "📦 grafana:"
                 docker ps --filter "name=grafana"
                 """
             }
         }
 
-        stage('Verify Prometheus Inside Container') {
+        stage('Verify Prometheus Config Inside Container') {
             steps {
 
-                echo "🔎 Verificando archivos dentro de Prometheus..."
+                echo "🔎 Verificando Prometheus interno..."
 
                 sh """
                 docker exec prometheus ls -la /etc/prometheus || true
@@ -171,13 +190,13 @@ pipeline {
         stage('Check App Health') {
             steps {
 
-                echo "💚 Verificando healthcheck..."
+                echo "💚 Verificando health..."
 
                 sh """
                 docker inspect \
-                    --format='{{.State.Health.Status}}' \
-                    node_app \
-                    || echo "No healthcheck definido"
+                  --format='{{.State.Health.Status}}' \
+                  node_app \
+                  || echo "No healthcheck definido"
                 """
             }
         }
@@ -191,12 +210,12 @@ pipeline {
         }
 
         success {
-            echo "🎉 Pipeline completado correctamente!"
-            echo "Node.js + Prometheus + Grafana corriendo."
+            echo "🎉 Stack desplegado correctamente"
+            echo "Node.js + Prometheus + Grafana activos"
         }
 
         failure {
-            echo "❌ Pipeline falló — revisar logs."
+            echo "❌ Pipeline falló — revisar logs"
         }
 
     }

@@ -15,7 +15,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                echo "🔄 Clonando código..."
+                echo "🔄 Clonando repositorio..."
 
                 checkout([$class: 'GitSCM',
                     branches: [[name: 'main']],
@@ -29,7 +29,7 @@ pipeline {
         stage('Verify Project Structure') {
             steps {
 
-                echo "📂 Verificando estructura..."
+                echo "📂 Verificando estructura del proyecto..."
 
                 sh """
                 echo "📍 Ubicación actual:"
@@ -47,25 +47,32 @@ pipeline {
             }
         }
 
-        stage('Clean Docker Environment') {
+        stage('Deep Clean Docker (Fix Prometheus Volume Bug)') {
             steps {
 
                 echo "🧹 Limpieza profunda Docker..."
 
                 sh """
+                echo "Deteniendo stack previo..."
+
                 docker-compose -f app/docker-compose.yml down -v || true
+
+                echo "Eliminando contenedores..."
 
                 docker rm -f prometheus || true
                 docker rm -f grafana || true
                 docker rm -f node_app || true
 
+                echo "Eliminando volúmenes..."
+
                 docker volume prune -f || true
-                docker system prune -f || true
 
-                echo "📦 Contenedores actuales:"
+                echo "Limpieza profunda del sistema Docker..."
+
+                docker system prune -af --volumes || true
+
+                echo "Estado actual de Docker:"
                 docker ps -a
-
-                echo "📦 Volúmenes actuales:"
                 docker volume ls
                 """
             }
@@ -74,9 +81,10 @@ pipeline {
         stage('Build Docker Image') {
             steps {
 
-                echo "🐳 Construyendo imagen..."
+                echo "🐳 Construyendo imagen Node.js..."
 
                 dir('app') {
+
                     sh """
                     docker build -t ${APP_NAME}:${APP_VERSION} .
                     """
@@ -97,7 +105,7 @@ pipeline {
                         -e APP_VERSION=${APP_VERSION} \
                         ${APP_NAME}:${APP_VERSION} \
                         sh -c '
-                            echo "📂 Archivos dentro del contenedor:"
+                            echo "📂 Contenido del contenedor:"
                             ls -la
 
                             if [ ! -f package.json ]; then
@@ -134,7 +142,7 @@ pipeline {
         stage('Deploy Monitoring Stack') {
             steps {
 
-                echo "🚀 Desplegando stack..."
+                echo "🚀 Desplegando stack completo..."
 
                 dir('app') {
 
@@ -142,10 +150,10 @@ pipeline {
                     echo "📍 Ubicación actual:"
                     pwd
 
-                    echo "📂 Archivos en app/:"
+                    echo "📂 Contenido actual:"
                     ls -la
 
-                    echo "📂 Archivos prometheus_config/:"
+                    echo "📂 Contenido prometheus_config:"
                     ls -la prometheus_config
 
                     echo "🚀 Levantando contenedores..."
@@ -156,7 +164,7 @@ pipeline {
             }
         }
 
-        stage('Verify Containers') {
+        stage('Verify Containers Running') {
             steps {
 
                 echo "🔍 Verificando contenedores..."
@@ -176,10 +184,10 @@ pipeline {
             }
         }
 
-        stage('Verify Prometheus Config Inside Container') {
+        stage('Verify Prometheus Files') {
             steps {
 
-                echo "🔎 Verificando Prometheus interno..."
+                echo "🔎 Verificando archivos dentro de Prometheus..."
 
                 sh """
                 docker exec prometheus ls -la /etc/prometheus || true
@@ -190,7 +198,7 @@ pipeline {
         stage('Check App Health') {
             steps {
 
-                echo "💚 Verificando health..."
+                echo "💚 Verificando estado de la app..."
 
                 sh """
                 docker inspect \
@@ -210,8 +218,7 @@ pipeline {
         }
 
         success {
-            echo "🎉 Stack desplegado correctamente"
-            echo "Node.js + Prometheus + Grafana activos"
+            echo "🎉 Stack Node.js + Prometheus + Grafana funcionando"
         }
 
         failure {

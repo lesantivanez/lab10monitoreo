@@ -16,7 +16,7 @@ services:
     image: prom/prometheus
     container_name: prometheus
     volumes:
-      - ./app/prometheus_config:/etc/prometheus:ro  # Monta todo el directorio
+      - ./prometheus_config:/etc/prometheus:ro
     ports:
       - "9090:9090"
     networks:

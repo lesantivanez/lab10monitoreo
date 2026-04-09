@@ -16,90 +16,175 @@ pipeline {
         stage('Checkout') {
             steps {
                 echo "🔄 Clonando código..."
+
                 checkout([$class: 'GitSCM',
                     branches: [[name: 'main']],
-                    userRemoteConfigs: [[url: 'https://github.com/lesantivanez/lab10monitoreo.git']]
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/lesantivanez/lab10monitoreo.git'
+                    ]]
                 ])
+            }
+        }
+
+        stage('Verify Project Structure') {
+            steps {
+                echo "📂 Verificando estructura del proyecto..."
+
+                sh """
+                echo "📍 Ubicación actual:"
+                pwd
+
+                echo "📂 Contenido raíz:"
+                ls -la
+
+                echo "📂 Contenido app/:"
+                ls -la app
+
+                echo "📂 Contenido prometheus_config/:"
+                ls -la app/prometheus_config || true
+                """
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                echo "🐳 Construyendo imagen Docker de la app..."
+                echo "🐳 Construyendo imagen Docker..."
+
                 dir('app') {
-                    sh "docker build -t ${APP_NAME}:${APP_VERSION} ."
+                    sh """
+                    docker build -t ${APP_NAME}:${APP_VERSION} .
+                    """
                 }
             }
         }
 
         stage('Run Tests') {
             steps {
-                echo "🧪 Ejecutando tests dentro del contenedor..."
+                echo "🧪 Ejecutando tests..."
+
                 dir('app') {
                     sh """
-                    docker run --rm -w /app -e APP_VERSION=${APP_VERSION} ${APP_NAME}:${APP_VERSION} sh -c '
-                        echo "📂 Contenido de /app:" && ls -la &&
-                        if [ ! -f package.json ]; then
-                            echo "❌ package.json no encontrado, abortando..." && exit 1
-                        fi &&
-                        npm test
-                    '
+                    docker run --rm \
+                        -w /app \
+                        -e APP_VERSION=${APP_VERSION} \
+                        ${APP_NAME}:${APP_VERSION} \
+                        sh -c '
+                            echo "📂 Contenido de /app:"
+                            ls -la
+
+                            if [ ! -f package.json ]; then
+                                echo "❌ package.json no encontrado"
+                                exit 1
+                            fi
+
+                            npm test
+                        '
                     """
                 }
+            }
+        }
+
+        stage('Validate Prometheus Config') {
+            steps {
+                echo "🔎 Validando archivo prometheus.yml..."
+
+                sh """
+                if [ ! -f app/prometheus_config/prometheus.yml ]; then
+                    echo "❌ ERROR: prometheus.yml NO encontrado"
+                    exit 1
+                fi
+
+                echo "✅ prometheus.yml encontrado"
+
+                echo "📄 Contenido:"
+                cat app/prometheus_config/prometheus.yml
+                """
             }
         }
 
         stage('Deploy Monitoring Stack') {
             steps {
-                echo "📂 Preparando docker-compose.yml y desplegando stack..."
-                dir('app') {
-                    sh """
-                    # Verificar docker-compose.yml
-                    if [ ! -f docker-compose.yml ]; then
-                        echo "❌ docker-compose.yml no encontrado, abortando..." && exit 1
-                    fi
+                echo "🚀 Desplegando Node + Prometheus + Grafana..."
 
-                    echo "📂 Contenido de app/:"
+                dir('app') {
+
+                    sh """
+                    echo "📍 Ubicación actual:"
+                    pwd
+
+                    echo "📂 Contenido actual:"
                     ls -la
 
-                    # Detener stack previo
-                    docker-compose down || true
+                    echo "📂 Prometheus config:"
+                    ls -la prometheus_config
 
-                    # Levantar stack Node + Prometheus + Grafana
-                    docker-compose up -d
+                    echo "🧹 Limpiando contenedores previos..."
+                    docker-compose down -v || true
+
+                    echo "🚀 Levantando stack..."
+                    docker-compose up -d --build
                     """
                 }
             }
         }
 
-        stage('Verify Deployment') {
+        stage('Verify Containers') {
             steps {
-                echo "🔍 Verificando contenedores en ejecución..."
-                sh "docker ps --filter 'name=node_app'"
-                sh "docker ps --filter 'name=prometheus'"
-                sh "docker ps --filter 'name=grafana'"
+                echo "🔍 Verificando contenedores..."
+
+                sh """
+                docker ps -a
+
+                echo "📦 Node:"
+                docker ps --filter "name=node_app"
+
+                echo "📦 Prometheus:"
+                docker ps --filter "name=prometheus"
+
+                echo "📦 Grafana:"
+                docker ps --filter "name=grafana"
+                """
+            }
+        }
+
+        stage('Verify Prometheus Inside Container') {
+            steps {
+                echo "🔎 Verificando archivos dentro de Prometheus..."
+
+                sh """
+                docker exec prometheus ls -la /etc/prometheus || true
+                """
             }
         }
 
         stage('Check App Health') {
             steps {
-                echo "💚 Verificando healthcheck de la app..."
+                echo "💚 Verificando healthcheck..."
+
                 sh """
-                docker inspect --format='{{.State.Health.Status}}' node_app || echo 'No healthcheck definido'
+                docker inspect \
+                    --format='{{.State.Health.Status}}' \
+                    node_app \
+                    || echo "No healthcheck definido"
                 """
             }
         }
+
     }
 
     post {
+
         always {
-            echo "🧹 Pipeline finalizado. Los contenedores siguen corriendo."
+            echo "🧹 Pipeline finalizado"
         }
+
         success {
-            echo "🎉 Pipeline completado correctamente! Node app + Prometheus + Grafana corriendo."
+            echo "🎉 Stack desplegado correctamente"
         }
+
         failure {
-            echo "❌ Pipeline falló. Revisa los logs."
+            echo "❌ Pipeline falló — revisar logs"
         }
+
     }
 }
